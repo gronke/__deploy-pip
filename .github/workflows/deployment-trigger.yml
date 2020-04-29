@@ -1,0 +1,61 @@
+name: 'PIP'
+on:
+  issues:
+    types: [opened]
+env:
+  PYPI_INDEX_URL: "https://test.pypi.org/simple/"
+  PYPI_API_TOKEN: "${{ secrets.TESTPYPI_API_TOKEN }}"
+  TRUSTED_SENDERS:
+    - gronke-bot
+  TRUSTED_REPOS:
+    - gronke/py-freebsd_sysctl
+  TRUSTED_TEST_REPOS:
+    - bsdci/py-freebsd_sysctl
+jobs:
+  publish:
+    steps:
+    - name: "Read Issue Body"
+      id: issue_body
+      run: |
+        REPOSITORY=$(python3 -c "print(re.match(r'.*\nRepository: (.*?)\n.*', '${{ github.event.issue.comment.body }}', re.DOTALL)[1])')
+        VERSION=$(python3 -c "print(re.match(r'.*\Version: ([0-9]+\.[0-9]+\.[0-9]+)\n.*', '${{ github.event.issue.comment.body }}', re.DOTALL)[1])')
+        COMMIT=$(python3 -c "print(re.match(r'.*\Commit: ([0-9]+\.[0-9]+\.[0-9]+)\n.*', '${{ github.event.issue.comment.body }}', re.DOTALL)[1])')
+        echo "::set-output name=REPOSITORY::$REPOSITORY"
+        echo "::set-output name=VERSION::$VERSION"
+        echo "::set-output name=COMMIT::$COMMIT"
+    - name: "Install Tools"
+      run: |
+        python3 -m pip install -U pip
+        python3 -m pip install twine
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+        repository: ${{ steps.issue_body.outputs.REPOSITORY }}
+    - name: "Verify Repository"
+      run: |
+        CURRENT_COMMIT="$(git rev-parse --verify HEAD)"
+        if [ "$CURRENT_COMMIT" != "${{ steps.issue_body.outputs.COMMIT }}" ]; then
+          echo "Commit mismatch: (requested ${{ steps.issue_body.outputs.COMMIT }}, but found $CURRENT_COMMIT"
+          exit 1
+        fi
+        if [ $(< VERSION) != "${{ steps.issue_body.outputs.REPOSITORY }}" ]; then
+          echo "Version mismatch."
+        fi
+    - name: Bundle Package
+      run: python setup.py sdist
+    - name: "Deploy Package"
+      if: contains(env.TRUSTED_REPOS.*, steps.issue_body.outputs.REPOSITORY)
+      run: |
+        echo "Deploying TRUSTED repository"
+        ls -al
+        echo ${{ github.event.issue.comment.body }}
+        echo "dist/$(python3 setup.py --name)-$(python3 setup.py --version).tar.gz"
+        ls -al dist/
+    - name: "Deploy Package (Testing)"
+      if: contains(env.TRUSTED_TEST_REPOS.*, steps.issue_body.outputs.REPOSITORY)
+      run: |
+        echo "Deploying TEST repository"
+        ls -al
+        echo ${{ github.event.issue.comment.body }}
+        echo "dist/$(python3 setup.py --name)-$(python3 setup.py --version).tar.gz"
+        ls -al dist/
