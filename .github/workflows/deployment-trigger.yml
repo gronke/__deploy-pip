@@ -12,8 +12,10 @@ jobs:
     steps:
     - name: "Check Trusted Sender"
       if: contains(fromJson(env.TRUSTED_SENDERS), github.event.sender.login) == false
+      env:
+        ACTION_SENDER: ${{ github.event.sender.login }}
       run: |
-        echo "{ github.event.sender.login } is untrusted."
+        echo "$ACTION_SENDER is untrusted."
         exit 1
     - name: "Read Issue Body"
       id: issue_body
