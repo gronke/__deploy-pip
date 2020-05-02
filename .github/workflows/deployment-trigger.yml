@@ -28,7 +28,7 @@ jobs:
     - name: "Read Issue Body"
       id: issue_body
       env:
-        GITHUB_ISSUE_BODY: ${{ github.event.issue.comment.body }}
+        GITHUB_ISSUE_BODY: ${{ github.event.issue.body }}
       run: |
         python3 <<___EOF
         import re
