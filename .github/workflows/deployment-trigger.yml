@@ -8,6 +8,7 @@ env:
   TRUSTED_TEST_REPOS: '["bsdci/py-freebsd_sysctl"]'
 jobs:
   publish:
+    runs-on: ubuntu-latest
     steps:
     - name: "Check Trusted Sender"
       if: contains(fromJson(env.TRUSTED_SENDERS), github.event.sender.login) == false
