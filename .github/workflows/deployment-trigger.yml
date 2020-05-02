@@ -17,6 +17,14 @@ jobs:
       run: |
         echo "$ACTION_SENDER is untrusted."
         exit 1
+    - run: |
+        cat <<___EOF
+        ${{ toJson(github.event.issue.body) }}
+        ___EOF
+    - run: |
+        cat <<___EOF
+        ${{ toJson(github.event.issue) }}
+        ___EOF
     - name: "Read Issue Body"
       id: issue_body
       env:
