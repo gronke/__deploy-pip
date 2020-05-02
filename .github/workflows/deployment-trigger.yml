@@ -3,17 +3,14 @@ on:
   issues:
     types: [opened, reopened, edited]
 env:
-  TRUSTED_SENDERS:
-    - gronke-bot
-  TRUSTED_REPOS:
-    - gronke/py-freebsd_sysctl
-  TRUSTED_TEST_REPOS:
-    - bsdci/py-freebsd_sysctl
+  TRUSTED_SENDERS: '["gronke-bot"]'
+  TRUSTED_REPOS: '["gronke/py-freebsd_sysctl"]'
+  TRUSTED_TEST_REPOS: '["bsdci/py-freebsd_sysctl"]'
 jobs:
   publish:
     steps:
     - name: "Check Trusted Sender"
-      if: contains(env.TRUSTED_SENDERS.*, .refgithub.event.sender.login) == false
+      if: contains(fromJson(env.TRUSTED_SENDERS), github.event.sender.login) == false
       run: |
         echo "{ github.event.sender.login } is untrusted."
         exit 1
@@ -47,7 +44,7 @@ jobs:
     - name: Bundle Package
       run: python setup.py sdist
     - name: "Deploy Package"
-      if: contains(env.TRUSTED_REPOS.*, steps.issue_body.outputs.REPOSITORY)
+      if: contains(fromJson(env.TRUSTED_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
         TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
       run: |
@@ -57,7 +54,7 @@ jobs:
         echo "dist/$(python3 setup.py --name)-$(python3 setup.py --version).tar.gz"
         ls -al dist/
     - name: "Deploy Package (Testing)"
-      if: contains(env.TRUSTED_TEST_REPOS.*, steps.issue_body.outputs.REPOSITORY)
+      if: contains(fromJson(env.TRUSTED_TEST_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
         TWINE_REPOSITORY_URL: "https://test.pypi.org/simple/"
         TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
