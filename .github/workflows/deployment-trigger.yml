@@ -19,13 +19,22 @@ jobs:
         exit 1
     - name: "Read Issue Body"
       id: issue_body
+      env:
+        GITHUB_ISSUE_BODY: ${{ github.event.issue.comment.body }}
       run: |
-        REPOSITORY=$(python3 -c "print(re.match(r'.*\nRepository: (.*?)\n.*', '${{ github.event.issue.comment.body }}', re.DOTALL)[1])')
-        VERSION=$(python3 -c "print(re.match(r'.*\Version: ([0-9]+\.[0-9]+\.[0-9]+)\n.*', '${{ github.event.issue.comment.body }}', re.DOTALL)[1])')
-        COMMIT=$(python3 -c "print(re.match(r'.*\Commit: ([0-9]+\.[0-9]+\.[0-9]+)\n.*', '${{ github.event.issue.comment.body }}', re.DOTALL)[1])')
-        echo "::set-output name=REPOSITORY::$REPOSITORY"
-        echo "::set-output name=VERSION::$VERSION"
-        echo "::set-output name=COMMIT::$COMMIT"
+        python3 <<___EOF
+        import re
+        import os
+        body = os.environ["GITHUB_ISSUE_BODY"].replace("\r\n", "\n").replace("\r", "\n")
+        body = f"\n{body}\n"
+        print(body)
+        REPOSITORY = re.match(r'.*\nRepository: ([A-Za-z0-9\.\-_/]+)\n.*', body, re.DOTALL)[1]
+        VERSION = re.match(r'.*\nVersion: ([0-9]+\.[0-9]+\.[0-9]+)\n.*', body, re.DOTALL)[1]
+        COMMIT = re.match(r'.*\nCommit: ([A-Fa-f0-9]{40})\n.*', body, re.DOTALL)[1]
+        print(f"::set-output name=REPOSITORY::{REPOSITORY}")
+        print(f"::set-output name=VERSION::{VERSION}")
+        print(f"::set-output name=COMMIT::{COMMIT}")
+        ___EOF
     - name: "Install Tools"
       run: |
         python3 -m pip install -U pip
