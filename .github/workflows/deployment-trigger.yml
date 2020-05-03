@@ -76,7 +76,7 @@ jobs:
     - name: "Deploy Package (Testing)"
       if: contains(fromJson(env.TRUSTED_TEST_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
-        TWINE_REPOSITORY_URL: "https://test.pypi.org/simple/"
+        TWINE_REPOSITORY_URL: "https://test.pypi.org/legacy/"
         TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
       run: |
         echo "Deploying TEST repository"
