@@ -45,10 +45,14 @@ jobs:
         print(f"::set-output name=COMMIT::{COMMIT}")
         ___EOF
 
+    - uses: actions/setup-python@v1
+      with:
+        python-version: "3.X"
+
     - name: "Install Tools"
       run: |
         python3 -m pip install -U pip
-        python3 -m pip install -U setuptools twine changelogmd
+        python3 -m pip install -U twine changelogmd
 
     - uses: actions/checkout@v2
       with:
