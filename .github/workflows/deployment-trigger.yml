@@ -36,12 +36,16 @@ jobs:
         import os
         body = os.environ["GITHUB_ISSUE_BODY"].replace("\r\n", "\n").replace("\r", "\n")
         body = f"\n{body}\n"
-        REPOSITORY = re.match(r'.*\nRepository: ([A-Za-z0-9\.\-_/]+)\n.*', body, re.DOTALL)[1]
-        VERSION = re.match(r'.*\nVersion: ([0-9]+\.[0-9]+\.[0-9]+)\n.*', body, re.DOTALL)[1]
-        COMMIT = re.match(r'.*\nCommit: ([A-Fa-f0-9]{40})\n.*', body, re.DOTALL)[1]
+        REPOSITORY = re.match(r'(?:.*\n)?Repository: ([A-Za-z0-9\.\-_/]+)\n.*', body, re.DOTALL)[1]
+        MODULE = re.match(r'(?:.*\n)?Module: \[([A-Za-z0-9\.\-_/]+)\]\((?:.*?)\)\n.*', body, re.DOTALL)[1]
+        VERSION = re.match(r'(?:.*\n)?Version: ([0-9]+\.[0-9]+\.[0-9]+)\n.*', body, re.DOTALL)[1]
+        COMMIT = re.match(r'(?:.*\n)?Commit: ([A-Fa-f0-9]{40})\n.*', body, re.DOTALL)[1]
+        PACKAGES = ",".join(re.match(f"^(?:.*\n)?(Packages:\ ?(?:\n-\ (?:[A-Za-z0-9_\-\.]+))+)(?:\n[^-].*?)?$", body, re.DOTALL)[1].split("\n- ")[1:])
         print(f"::set-output name=REPOSITORY::{REPOSITORY}")
+        print(f"::set-output name=MODULE::{MODULE}")
         print(f"::set-output name=VERSION::{VERSION}")
         print(f"::set-output name=COMMIT::{COMMIT}")
+        print(f"::set-output name=Packages::{PACKAGES}")
         ___EOF
 
     - uses: actions/setup-python@v1
@@ -51,54 +55,53 @@ jobs:
     - name: "Install Tools"
       run: |
         python3 -m pip install -U pip
-        python3 -m pip install -U twine changelogmd
+        python3 -m pip install -U twine changelogmd requests
+
+    - uses: actions/checkout@v2
+      with:
+        path: "tools/"
 
     - uses: actions/checkout@v2
       with:
         fetch-depth: 0
         repository: ${{ steps.issue_body.outputs.REPOSITORY }}
+        path: "source/"
+
+    - name: "Untrusted Repository"
+      if: (contains(fromJson(env.TRUSTED_REPOS), steps.issue_body.outputs.REPOSITORY) == false) && (contains(fromJson(env.TRUSTED_TEST_REPOS), steps.issue_body.outputs.REPOSITORY) == false)
+      run: |
+        echo "Untrusted Repository."
+        exit 1
 
     - name: "Verify Repository"
+      env:
+        ISSUE_BODY_VERSION: ${{ steps.issue_body.outputs.VERSION }}
+        ISSUE_BODY_COMMIT: ${{ steps.issue_body.outputs.COMMIT }}
       run: |
-        CURRENT_COMMIT="$(git rev-parse --verify HEAD)"
-        if [ "$CURRENT_COMMIT" != "${{ steps.issue_body.outputs.COMMIT }}" ]; then
-          echo "Commit mismatch: (requested ${{ steps.issue_body.outputs.COMMIT }}, but found $CURRENT_COMMIT"
+        CURRENT_COMMIT="$(git --git-dir ./source/.git rev-parse --verify HEAD)"
+        if [ "$CURRENT_COMMIT" != "$ISSUE_BODY_COMMIT" ]; then
+          echo "Commit mismatch: (requested $ISSUE_BODY_COMMIT, but found $CURRENT_COMMIT"
           exit 1
         fi
-        if [ $(< VERSION) != "${{ steps.issue_body.outputs.REPOSITORY }}" ]; then
-          echo "Version mismatch."
+        if [ "$ISSUE_BODY_VERSION" == "UNRELEASED" ]; then
+          echo "Refusing to deploy UNRELEASED changes."
+          exit 1
+        fi
+        if [ "(cat ./source/CHANGELOG.md | grep "^## " | cut -d " " -f 2" == "[$ISSUE_BODY_VERSION]" ]; then
+          echo "Incorrect version in CHANGELOG.md"
+          exit 1
         fi
 
-    - name: Check Release-Candidate
-      id: is_release
-      if: contains(fromJson(env.TRUSTED_REPOS), steps.issue_body.outputs.REPOSITORY) || contains(fromJson(env.TRUSTED_TEST_REPOS), steps.issue_body.outputs.REPOSITORY)
+    - name: Download GitHub Release Asset
+      id: download_release_asset
       env:
-        DETECTED_VERSION: ${{ steps.get_version.outputs.VERSION }}
-      run: |
-        python3 <<___EOF
-        import os
-        import changelogmd
-        latest_version = changelogmd.Changelog().versions[0]
-        is_release = (str(latest_version.version) != "UNRELEASED")
-        print(f"::set-output name=STATUS::{str(1 * is_release)}")
-        if is_release is False:
-          print("CHANGELOG.md has UNRELEASED changes. Aborting.")
-          exit(1)
-        else:
-          print("Release candidate detected.")
-          VERSION = str(latest_version.version).replace("\r","").replace("%", "%25").replace("\n", "%0A")
-          print(f"::set-output name=VERSION::{VERSION}")
-          import setup
-          for package in setup.config["packages"]:
-            version_file_path = f"{package}/.version"
-            with open(version_file_path, "w", encoding="UTF-8") as f:
-              f.write(str(latest_version.version))
-              f.truncate()
-              print(f"Static .version file created for '{package}' package")
-        ___EOF
-
-    - name: Bundle Package
-      run: python3 setup.py sdist
+        RELEASE_API_URL: "https://api.github.com/repos/${{ steps.issue_body.outputs.REPOSITORY }}/releases"
+        ISSUE_REPOSITORY: ${{ steps.issue_body.outputs.REPOSITORY }}
+        ISSUE_MODULE: ${{ steps.issue_body.outputs.MODULE }}
+        ISSUE_VERSION: ${{ steps.issue_body.outputs.VERSION }}
+        ISSUE_PACKAGES: ${{ steps.issue_body.outputs.PACKAGES }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: python3 tools/download-release-asset.py
 
     - name: "Deploy Package"
       if: contains(fromJson(env.TRUSTED_REPOS), steps.issue_body.outputs.REPOSITORY)
@@ -106,9 +109,8 @@ jobs:
         TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
       run: |
         echo "Deploying TRUSTED repository"
-        ls -al
-        echo "dist/$(python3 setup.py --name)-$(python3 setup.py --version).tar.gz"
-        ls -al dist/
+        echo "DISABLED"
+        exit 1
 
     - name: "Deploy Package (Testing)"
       if: contains(fromJson(env.TRUSTED_TEST_REPOS), steps.issue_body.outputs.REPOSITORY)
@@ -116,14 +118,16 @@ jobs:
         TWINE_REPOSITORY_URL: "https://test.pypi.org/legacy/"
         TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
         CHANGELOG_VERSION: ${{ steps.is_release.outputs.VERSION }}
-      run: |
-        SETUP_VERSION="$(python3 setup.py --version)"
+        TARFILE: ${{ steps.download_release_asset.outputs.TARFILE }}
+      run: python3 -m twine upload --non-interactive --repository-url "$TWINE_REPOSITORY_URL" -u __token__ "$TARFILE"
 
-        ls -al dist/
-        echo "dist/$(python3 setup.py --name)-${SETUP_VERSION}.tar.gz"
-
-        if [ "$SETUP_VERSION" != "$CHANGELOG_VERSION" ]; then
-          echo f"Version mismatch between setup.py ({SETUP_VERSION}) and CHANGELOG.md ({CHANGELOG_VERSION}))"
-          exit 1
-        fi
-        python3 -m twine upload --non-interactive --repository-url "$TWINE_REPOSITORY_URL" -u __token__ "dist/$(python3 setup.py --name)-${SETUP_VERSION}.tar.gz"
+    - uses: actions/github-script@0.9.0
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          github.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '🎉 Release has been published!'
+          })
