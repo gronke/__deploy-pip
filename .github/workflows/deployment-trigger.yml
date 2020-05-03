@@ -36,7 +36,6 @@ jobs:
         import os
         body = os.environ["GITHUB_ISSUE_BODY"].replace("\r\n", "\n").replace("\r", "\n")
         body = f"\n{body}\n"
-        print(body)
         REPOSITORY = re.match(r'.*\nRepository: ([A-Za-z0-9\.\-_/]+)\n.*', body, re.DOTALL)[1]
         VERSION = re.match(r'.*\nVersion: ([0-9]+\.[0-9]+\.[0-9]+)\n.*', body, re.DOTALL)[1]
         COMMIT = re.match(r'.*\nCommit: ([A-Fa-f0-9]{40})\n.*', body, re.DOTALL)[1]
