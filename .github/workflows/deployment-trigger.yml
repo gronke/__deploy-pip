@@ -62,7 +62,7 @@ jobs:
           echo "Version mismatch."
         fi
     - name: Bundle Package
-      run: python setup.py sdist
+      run: python3 setup.py sdist
     - name: "Deploy Package"
       if: contains(fromJson(env.TRUSTED_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
