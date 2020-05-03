@@ -25,6 +25,7 @@ jobs:
         cat <<___EOF
         ${{ toJson(github.event.issue) }}
         ___EOF
+
     - name: "Read Issue Body"
       id: issue_body
       env:
@@ -43,14 +44,17 @@ jobs:
         print(f"::set-output name=VERSION::{VERSION}")
         print(f"::set-output name=COMMIT::{COMMIT}")
         ___EOF
+
     - name: "Install Tools"
       run: |
         python3 -m pip install -U pip
-        python3 -m pip install twine
+        python3 -m pip install -U setuptools twine changelogmd
+
     - uses: actions/checkout@v2
       with:
         fetch-depth: 0
         repository: ${{ steps.issue_body.outputs.REPOSITORY }}
+
     - name: "Verify Repository"
       run: |
         CURRENT_COMMIT="$(git rev-parse --verify HEAD)"
@@ -61,8 +65,38 @@ jobs:
         if [ $(< VERSION) != "${{ steps.issue_body.outputs.REPOSITORY }}" ]; then
           echo "Version mismatch."
         fi
+
+    - name: Check Release-Candidate
+      id: is_release
+      if: contains(fromJson(env.TRUSTED_REPOS), steps.issue_body.outputs.REPOSITORY) || contains(fromJson(env.TRUSTED_TEST_REPOS), steps.issue_body.outputs.REPOSITORY)
+      env:
+        DETECTED_VERSION: ${{ steps.get_version.outputs.VERSION }}
+      run: |
+        python3 <<___EOF
+        import os
+        import changelogmd
+        latest_version = changelogmd.Changelog().versions[0]
+        is_release = (str(latest_version.version) != "UNRELEASED")
+        print(f"::set-output name=STATUS::{str(1 * is_release)}")
+        if is_release is False:
+          print("CHANGELOG.md has UNRELEASED changes. Aborting.")
+          exit(1)
+        else:
+          print("Release candidate detected.")
+          VERSION = str(latest_version.version).replace("\r","").replace("%", "%25").replace("\n", "%0A")
+          print(f"::set-output name=VERSION::{VERSION}")
+          import setup
+          for package in setup.config["packages"]:
+            version_file_path = f"{package}/.version"
+            with open(version_file_path, "w", encoding="UTF-8") as f:
+              f.write(str(latest_version.version))
+              f.truncate()
+              print(f"Static .version file created for '{package}' package")
+        ___EOF
+
     - name: Bundle Package
       run: python3 setup.py sdist
+
     - name: "Deploy Package"
       if: contains(fromJson(env.TRUSTED_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
@@ -70,18 +104,23 @@ jobs:
       run: |
         echo "Deploying TRUSTED repository"
         ls -al
-        echo ${{ github.event.issue.comment.body }}
         echo "dist/$(python3 setup.py --name)-$(python3 setup.py --version).tar.gz"
         ls -al dist/
+
     - name: "Deploy Package (Testing)"
       if: contains(fromJson(env.TRUSTED_TEST_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
         TWINE_REPOSITORY_URL: "https://test.pypi.org/legacy/"
         TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
+        CHANGELOG_VERSION: ${{ steps.is_release.outputs.VERSION }}
       run: |
-        echo "Deploying TEST repository"
-        ls -al
-        echo ${{ github.event.issue.comment.body }}
-        echo "dist/$(python3 setup.py --name)-$(python3 setup.py --version).tar.gz"
+        SETUP_VERSION="$(python3 setup.py --version)"
+
         ls -al dist/
-        python3 -m twine upload --non-interactive -u __token__ "dist/$(python3 setup.py --name)-$(python3 setup.py --version).tar.gz"
+        echo "dist/$(python3 setup.py --name)-${SETUP_VERSION}.tar.gz"
+
+        if [ "$SETUP_VERSION" != "$CHANGELOG_VERSION" ]; then
+          echo f"Version mismatch between setup.py ({SETUP_VERSION}) and CHANGELOG.md ({CHANGELOG_VERSION}))"
+          exit 1
+        fi
+        python3 -m twine upload --non-interactive --repository-url "$TWINE_REPOSITORY_URL" -u __token__ "dist/$(python3 setup.py --name)-${SETUP_VERSION}.tar.gz"
