@@ -61,13 +61,14 @@ for asset_data in release_data["assets"]:
   downloaded_asset_size = os.lstat(tar_file).st_size
   expected_asset_size = asset_data["size"]
   if downloaded_asset_size != expected_asset_size:
-    print(f"Release Asset size mismatch. Downloaded {downloaded_asset_size}, but expected {expected_asset_size} bytes")
+    print(f"Release Asset size mismatch: Expected {expected_asset_size}, but got {downloaded_asset_size} bytes.")
     exit(1)
 
+  version_file_found = False
   with tarfile.open(tar_file, "r:gz") as tar:
     for member in tar.getmembers():
       if (member.name.startswith(release_slug) is False) or (".." in member.name):
-        print(f"Release asset file content mismatch. Illegal path {member.name}")
+        print(f"Release asset file content mismatch: Illegal path {member.name}")
         exit(1)
 
       file_name = member.name[len(release_slug)+1:]
@@ -77,7 +78,12 @@ for asset_data in release_data["assets"]:
         continue
       
       if (os.path.basename(file_name) == ".version") and os.path.isdir(os.path.dirname(source_file_path)):
-        continue
+        version_file_found = True
+        with tar.extractfile(member) as version_file:
+          if version_file.read().decode("UTF-8") != issue_version:
+            print(".version file mismatch in source distribution.")
+            exit(1)
+          continue
 
       if member.isdir() is True:
         if os.path.isdir(source_file_path) is False:
@@ -100,9 +106,13 @@ for asset_data in release_data["assets"]:
             print(f"Source file {file_name} content mismatch.")
             exit(1)
 
-      print(f"Release Asset {tar_file} content matches source repository.")
-      print(f"::set-output name=TARFILE::{tar_file}")
-      exit(0)
+  if version_file_found is False:
+    print(".version file not found in source distribution archive.")
+    exit(1)
+
+  print(f"Release Asset {tar_file} content matches source repository.")
+  print(f"::set-output name=TARFILE::{tar_file}")
+  exit(0)
 
 print(f"Could not find Release Asset: {issue_asset_file}")
 exit(1)
