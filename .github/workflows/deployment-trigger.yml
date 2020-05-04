@@ -103,24 +103,31 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: python3 tools/download-release-asset.py
 
-    - name: "Deploy Package"
+    - name: "Configure PyPI"
       if: contains(fromJson(env.TRUSTED_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
-        TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
+        TWINE_REPOSITORY_URL: "https://upload.pypi.org/legacy/"
+        TWINE_PASSWORD: "${{ secrets.PYPI_API_TOKEN }}"
       run: |
-        echo "Deploying TRUSTED repository"
-        echo "DISABLED"
-        exit 1
+        echo "::set-env name=TWINE_REPOSITORY_URL::$TWINE_REPOSITORY_URL"
+        echo "::set-env name=TWINE_PASSWORD::$TWINE_PASSWORD"
 
-    - name: "Deploy Package (Testing)"
+    - name: "Configure PyPI (Testing)"
       if: contains(fromJson(env.TRUSTED_TEST_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
         TWINE_REPOSITORY_URL: "https://test.pypi.org/legacy/"
         TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
+      run: |
+        echo "::set-env name=TWINE_REPOSITORY_URL::$TWINE_REPOSITORY_URL"
+        echo "::set-env name=TWINE_PASSWORD::$TWINE_PASSWORD"
+
+    - name: "Deploy"
+      id: deploy
+      env:
         CHANGELOG_VERSION: ${{ steps.is_release.outputs.VERSION }}
         TARFILE: ${{ steps.download_release_asset.outputs.TARFILE }}
       run: |
-        python3 -m twine upload --non-interactive --disable-progress-bar --repository-url "$TWINE_REPOSITORY_URL" -u __token__ "$TARFILE"
+        python3 -m twine upload --non-interactive --disable-progress-bar -u __token__ "$TARFILE"
         echo "::set-output name=URL::https://test.pypi.org/project"
 
     - uses: actions/github-script@0.9.0
