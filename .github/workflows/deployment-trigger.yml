@@ -107,24 +107,27 @@ jobs:
       if: contains(fromJson(env.TRUSTED_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
         TWINE_REPOSITORY_URL: "https://upload.pypi.org/legacy/"
+        TWINE_PROJECT_URL: "https://pypi.org/project/${{ steps.issue_body.outputs.MODULE }}/${{ steps.issue_body.outputs.VERSION }}"
         TWINE_PASSWORD: "${{ secrets.PYPI_API_TOKEN }}"
       run: |
         echo "::set-env name=TWINE_REPOSITORY_URL::$TWINE_REPOSITORY_URL"
+        echo "::set-env name=TWINE_PROJECT_URL::$TWINE_PROJECT_URL"
         echo "::set-env name=TWINE_PASSWORD::$TWINE_PASSWORD"
 
     - name: "Configure PyPI (Testing)"
       if: contains(fromJson(env.TRUSTED_TEST_REPOS), steps.issue_body.outputs.REPOSITORY)
       env:
         TWINE_REPOSITORY_URL: "https://test.pypi.org/legacy/"
+        TWINE_PROJECT_URL: "https://test.pypi.org/project/${{ steps.issue_body.outputs.MODULE }}/${{ steps.issue_body.outputs.VERSION }}"
         TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
       run: |
         echo "::set-env name=TWINE_REPOSITORY_URL::$TWINE_REPOSITORY_URL"
+        echo "::set-env name=TWINE_PROJECT_URL::$TWINE_PROJECT_URL"
         echo "::set-env name=TWINE_PASSWORD::$TWINE_PASSWORD"
 
     - name: "Deploy"
       id: deploy
       env:
-        CHANGELOG_VERSION: ${{ steps.is_release.outputs.VERSION }}
         TARFILE: ${{ steps.download_release_asset.outputs.TARFILE }}
       run: |
         python3 -m twine upload --non-interactive --disable-progress-bar -u __token__ "$TARFILE"
