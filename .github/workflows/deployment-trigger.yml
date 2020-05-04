@@ -119,15 +119,20 @@ jobs:
         TWINE_PASSWORD: "${{ secrets.TESTPYPI_API_TOKEN }}"
         CHANGELOG_VERSION: ${{ steps.is_release.outputs.VERSION }}
         TARFILE: ${{ steps.download_release_asset.outputs.TARFILE }}
-      run: python3 -m twine upload --non-interactive --repository-url "$TWINE_REPOSITORY_URL" -u __token__ "$TARFILE"
+      run: |
+        python3 -m twine upload --non-interactive --disable-progress-bar --repository-url "$TWINE_REPOSITORY_URL" -u __token__ "$TARFILE"
+        echo "::set-output name=URL::https://test.pypi.org/project"
 
     - uses: actions/github-script@0.9.0
+      env:
+        URL: ${{ steps.deploy.outputs.URL }}
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
+          const URL = process.env.URL;
           github.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: '🎉 Release has been published!'
-          })
+            body: `🎉 Release has been published!\n\n${URL}`
+          });
